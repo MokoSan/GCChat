@@ -4,6 +4,7 @@ import styles from '../styles/Home.module.css'
 import Image from 'next/image'
 import ReactMarkdown from 'react-markdown'
 import CircularProgress from '@mui/material/CircularProgress';
+import { FileUploader } from "react-drag-drop-files";
 
 export default function Home() {
 
@@ -12,10 +13,12 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [messages, setMessages] = useState([
     {
-      "message": "Hi there! Ask me a GC related question.",
+      "message": "Hi there! Ask me a GC related question or upload a trace and enter '/analyze'.",
       "type": "apiMessage"
     }
   ]);
+
+  const fileTypes = ["ETL", "ZIP", "ETLX"];
 
   const messageListRef = useRef(null);
   const textAreaRef = useRef(null);
@@ -30,6 +33,9 @@ export default function Home() {
   useEffect(() => {
     textAreaRef.current.focus();
   }, []);
+
+  const [file, setFile] = useState(null);
+  const handleChange = (file) => { setFile(file); };
 
   // Handle errors
   const handleError = () => {
@@ -49,32 +55,54 @@ export default function Home() {
     setLoading(true);
     setMessages((prevMessages) => [...prevMessages, { "message": userInput, "type": "userMessage" }]);
 
-    // Send user question and history to API
-    const response = await fetch("/api/chat", {
-      method: "POST",
-      headers: {
-          "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ question: userInput, history: history }),
-    });
+    if (userInput.includes("/analyze"))
+    {
+      if (file != null)
+      {
+        const formData = new FormData();
+        formData.append("file", file); 
 
-    if (!response.ok) {
-      handleError();
-      return;
-  }
+        const response = await fetch("https://traceeventweb.azurewebsites.net/api/TraceEvent", {
+            method: "POST",
+            body: formData,
+        })
 
-    // Reset user input
-    setUserInput("");
-    const data = await response.json();
-
-    if (data.result.error === "Unauthorized") {
-      handleError();
-      return;
+        let results = await response.json()
+        let r = results.map(r => r.summary).join(", ")
+        setMessages((prevMessages) => [...prevMessages, { "message": r, "type": "apiMessage" }]);
+        setFile(null)
+      }
     }
 
-    setMessages((prevMessages) => [...prevMessages, { "message": data.result, "type": "apiMessage" }]);
+    else
+    {
+      // Send user question and history to API
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ question: userInput, history: history }),
+      });
+
+      if (!response.ok) {
+        handleError();
+        return;
+      }
+
+      // Reset user input
+      const data = await response.json();
+
+      if (data.result.error === "Unauthorized") {
+        handleError();
+        return;
+      }
+
+      setMessages((prevMessages) => [...prevMessages, { "message": data.result, "type": "apiMessage" }]);
+    }
+
+    setUserInput("");
     setLoading(false);
-    
   };
 
   // Prevent blank submissions and allow for multiline input
@@ -126,8 +154,6 @@ export default function Home() {
         })}
         </div>
             </div>
-           <div className={styles.center}>
-            
             <div className = {styles.cloudform}>
            <form onSubmit = {handleSubmit}>
           <textarea 
@@ -157,9 +183,12 @@ export default function Home() {
           </svg>}
             </button>
             </form>
+    <FileUploader handleChange={handleChange} name="file" types={fileTypes} /> 
+           <div className={styles.center}>
+            
             </div>
             <div className = {styles.footer}>
-            <p>Powered by <a href = "https://github.com/hwchase17/langchain" target="_blank">LangChain</a>. </p> 
+            <p>Powered by <a href = "https://github.com/hwchase17/langchain" target="_blank">LangChain</a>. And Built by Moko. </p> 
             </div>
         </div>
       </main>
